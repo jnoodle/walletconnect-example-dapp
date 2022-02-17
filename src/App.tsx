@@ -20,9 +20,10 @@ import {
 } from "./helpers/utilities";
 import { convertAmountToRawNumber, convertStringToHex } from "./helpers/bignumber";
 import { IAssetData } from "./helpers/types";
-import Banner from "./components/Banner";
-import AccountAssets from "./components/AccountAssets";
+// import Banner from "./components/Banner";
+// import AccountAssets from "./components/AccountAssets";
 import { eip712 } from "./helpers/eip712";
+import fetch from "./api";
 
 const SLayout = styled.div`
   position: relative;
@@ -39,7 +40,7 @@ const SContent = styled(Wrapper as any)`
 `;
 
 const SLanding = styled(Column as any)`
-  height: 600px;
+  max-height: 600px;
 `;
 
 const SButtonContainer = styled(Column as any)`
@@ -77,6 +78,20 @@ const SModalTitle = styled.div`
   font-weight: 700;
 `;
 
+const SModalTitleSuccess = styled.div`
+  margin: 1em 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #5daf0e;
+`;
+
+const SModalTitleFailure = styled.div`
+  margin: 1em 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #cf2121;
+`;
+
 const SModalParagraph = styled.p`
   margin-top: 30px;
 `;
@@ -89,26 +104,26 @@ const SBalances = styled(SLanding as any)`
   }
 `;
 
-const STable = styled(SContainer as any)`
-  flex-direction: column;
-  text-align: left;
-`;
-
-const SRow = styled.div`
-  width: 100%;
-  display: flex;
-  margin: 6px 0;
-`;
-
-const SKey = styled.div`
-  width: 30%;
-  font-weight: 700;
-`;
-
-const SValue = styled.div`
-  width: 70%;
-  font-family: monospace;
-`;
+// const STable = styled(SContainer as any)`
+//   flex-direction: column;
+//   text-align: left;
+// `;
+//
+// const SRow = styled.div`
+//   width: 100%;
+//   display: flex;
+//   margin: 6px 0;
+// `;
+//
+// const SKey = styled.div`
+//   width: 30%;
+//   font-weight: 700;
+// `;
+//
+// const SValue = styled.div`
+//   width: 70%;
+//   font-family: monospace;
+// `;
 
 const STestButtonContainer = styled.div`
   width: 100%;
@@ -138,6 +153,7 @@ interface IAppState {
   accounts: string[];
   address: string;
   result: any | null;
+  success: boolean;
   assets: IAssetData[];
 }
 
@@ -152,6 +168,7 @@ const INITIAL_STATE: IAppState = {
   accounts: [],
   address: "",
   result: null,
+  success: true,
   assets: [],
 };
 
@@ -626,6 +643,194 @@ class App extends React.Component<any, any> {
     }
   };
 
+  // sign and check
+  public SignIn = async () => {
+    const { connector, address, chainId } = this.state;
+
+    if (!connector) {
+      return;
+    }
+
+    try {
+      // open modal
+      this.toggleModal();
+
+      // toggle pending request indicator
+      this.setState({ pendingRequest: true });
+
+      // get message
+      let message = "";
+      const getSign = await fetch({
+        method: "get",
+        url: `/game/user/getSign`,
+      });
+      console.log(getSign);
+      console.log(address);
+      console.log(chainId);
+      // @ts-ignore
+      if (getSign && getSign.data && getSign.data.sign) {
+        // @ts-ignore
+        message = getSign.data.sign;
+        console.log(message);
+
+        // encode message (hex)
+        const hexMsg = convertUtf8ToHex(message);
+
+        // eth_sign params
+        const msgParams = [hexMsg, address];
+
+        // send message
+        const result = await connector.signPersonalMessage(msgParams);
+
+        // format displayed result
+        const formattedResult = {
+          token: message,
+          address,
+          signed: result,
+        };
+
+        console.log(formattedResult);
+
+        // check sign
+        const validSign = await fetch({
+          method: "post",
+          url: `/game/user/checkSign`,
+          data: {
+            address,
+            msg: result,
+            sign: message,
+          },
+        });
+        // @ts-ignore
+        if (validSign && validSign.success) {
+          this.setState({
+            connector,
+            pendingRequest: false,
+            result: {},
+            success: true,
+          });
+        } else {
+          this.setState({
+            connector,
+            pendingRequest: false,
+            result: "Invalid Signature",
+            success: false,
+          });
+        }
+      } else {
+        this.setState({
+          connector,
+          pendingRequest: false,
+          result: "Failed to get user information",
+          success: false,
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      this.setState({ connector, pendingRequest: false, result: e.message, success: false });
+    }
+
+    // try {
+    //   let message = "Abeats_" + (this.websiteInfo.timeStamp || +new Date());
+    //   // connect to MetaMask
+    //   const accounts = await window.ethereum.request({
+    //     method: "eth_requestAccounts",
+    //   });
+    //   const account = accounts[0];
+    //   console.log(account);
+    //
+    //   // sign by MetaMask
+    //   const request = {
+    //     method: "personal_sign",
+    //     params: [toHex(message), account],
+    //   };
+    //
+    //   try {
+    //     const signature = await window.ethereum.request(request);
+    //     try {
+    //       const result = await fetch({
+    //         method: "post",
+    //         url: `/website/user/getUserInfo`,
+    //         data: {
+    //           uniqueKey: account,
+    //           message,
+    //           signature,
+    //         },
+    //       });
+    //       if (result && result.data && result.data.userId) {
+    //         return {
+    //           address: account,
+    //           userId: result.data.userId,
+    //         };
+    //       }
+    //       return null;
+    //     } catch (res) {
+    //       this.$toast.open({
+    //         message: res.message,
+    //         type: "error",
+    //         position: "top-right",
+    //       });
+    //       return null;
+    //     }
+    //   } catch (e) {
+    //     console.error(e);
+    //     this.$toast.open({
+    //       message: "Failed to sign with MetaMask.",
+    //       type: "error",
+    //       position: "top-right",
+    //     });
+    //     return null;
+    //   }
+    // } catch (e) {
+    //   console.error(e);
+    //   this.$toast.open({
+    //     message: "Failed to connect to Metamask.",
+    //     type: "error",
+    //     position: "top-right",
+    //   });
+    //   return null;
+    // }
+
+    // // encode message (hex)
+    // const hexMsg = convertUtf8ToHex(message);
+    //
+    // // eth_sign params
+    // const msgParams = [hexMsg, address];
+    //
+    // try {
+    //   // open modal
+    //   this.toggleModal();
+    //
+    //   // toggle pending request indicator
+    //   this.setState({ pendingRequest: true });
+    //
+    //   // send message
+    //   const result = await connector.signPersonalMessage(msgParams);
+    //
+    //   // verify signature
+    //   const hash = hashMessage(message);
+    //   const valid = await verifySignature(address, result, hash, chainId);
+    //
+    //   // format displayed result
+    //   const formattedResult = {
+    //     method: "personal_sign",
+    //     address,
+    //     valid,
+    //     result,
+    //   };
+    //
+    //   // display result
+    //   this.setState({
+    //     connector,
+    //     pendingRequest: false,
+    //     result: formattedResult || null,
+    //   });
+    // } catch (error) {
+    //   console.error(error);
+    //   this.setState({ connector, pendingRequest: false, result: null });
+    // }
+  };
+
   public render = () => {
     const {
       assets,
@@ -636,6 +841,7 @@ class App extends React.Component<any, any> {
       showModal,
       pendingRequest,
       result,
+      success,
     } = this.state;
     return (
       <SLayout>
@@ -648,12 +854,8 @@ class App extends React.Component<any, any> {
           />
           <SContent>
             {!address && !assets.length ? (
-              <SLanding center>
-                <h3>
-                  {`Try out WalletConnect`}
-                  <br />
-                  <span>{`v${process.env.REACT_APP_VERSION}`}</span>
-                </h3>
+              <SLanding>
+                <h3>{`Abeats Game Sign In`}</h3>
                 <SButtonContainer>
                   <SConnectButton left onClick={this.connect} fetching={fetching}>
                     {"Connect to WalletConnect"}
@@ -662,40 +864,42 @@ class App extends React.Component<any, any> {
               </SLanding>
             ) : (
               <SBalances>
-                <Banner />
-                <h3>Actions</h3>
+                {/*<Banner />*/}
                 <Column center>
                   <STestButtonContainer>
-                    <STestButton left onClick={this.testSendTransaction}>
-                      {"eth_sendTransaction"}
-                    </STestButton>
-                    <STestButton left onClick={this.testSignTransaction}>
-                      {"eth_signTransaction"}
-                    </STestButton>
-                    <STestButton left onClick={this.testSignTypedData}>
-                      {"eth_signTypedData"}
-                    </STestButton>
-                    <STestButton left onClick={this.testLegacySignMessage}>
-                      {"eth_sign (legacy)"}
-                    </STestButton>
-                    <STestButton left onClick={this.testStandardSignMessage}>
-                      {"eth_sign (standard)"}
-                    </STestButton>
-                    <STestButton left onClick={this.testPersonalSignMessage}>
-                      {"personal_sign"}
+                    {/*<STestButton left onClick={this.testSendTransaction}>*/}
+                    {/*  {"eth_sendTransaction"}*/}
+                    {/*</STestButton>*/}
+                    {/*<STestButton left onClick={this.testSignTransaction}>*/}
+                    {/*  {"eth_signTransaction"}*/}
+                    {/*</STestButton>*/}
+                    {/*<STestButton left onClick={this.testSignTypedData}>*/}
+                    {/*  {"eth_signTypedData"}*/}
+                    {/*</STestButton>*/}
+                    {/*<STestButton left onClick={this.testLegacySignMessage}>*/}
+                    {/*  {"eth_sign (legacy)"}*/}
+                    {/*</STestButton>*/}
+                    {/*<STestButton left onClick={this.testStandardSignMessage}>*/}
+                    {/*  {"eth_sign (standard)"}*/}
+                    {/*</STestButton>*/}
+                    {/*<STestButton left onClick={this.testPersonalSignMessage}>*/}
+                    {/*  {"personal_sign"}*/}
+                    {/*</STestButton>*/}
+                    <STestButton left onClick={this.SignIn}>
+                      {"Sign In"}
                     </STestButton>
                   </STestButtonContainer>
                 </Column>
-                <h3>Balances</h3>
-                {!fetching ? (
-                  <AccountAssets chainId={chainId} assets={assets} />
-                ) : (
-                  <Column center>
-                    <SContainer>
-                      <Loader />
-                    </SContainer>
-                  </Column>
-                )}
+                {/*<h3>Balances</h3>*/}
+                {/*{!fetching ? (*/}
+                {/*  <AccountAssets chainId={chainId} assets={assets} />*/}
+                {/*) : (*/}
+                {/*  <Column center>*/}
+                {/*    <SContainer>*/}
+                {/*      <Loader />*/}
+                {/*    </SContainer>*/}
+                {/*  </Column>*/}
+                {/*)}*/}
               </SBalances>
             )}
           </SContent>
@@ -703,24 +907,32 @@ class App extends React.Component<any, any> {
         <Modal show={showModal} toggleModal={this.toggleModal}>
           {pendingRequest ? (
             <SModalContainer>
-              <SModalTitle>{"Pending Call Request"}</SModalTitle>
+              <SModalTitle>{"Pending Sign Request"}</SModalTitle>
               <SContainer>
                 <Loader />
                 <SModalParagraph>{"Approve or reject request using your wallet"}</SModalParagraph>
               </SContainer>
             </SModalContainer>
           ) : result ? (
-            <SModalContainer>
-              <SModalTitle>{"Call Request Approved"}</SModalTitle>
-              <STable>
-                {Object.keys(result).map(key => (
-                  <SRow key={key}>
-                    <SKey>{key}</SKey>
-                    <SValue>{result[key].toString()}</SValue>
-                  </SRow>
-                ))}
-              </STable>
-            </SModalContainer>
+            success ? (
+              <SModalContainer>
+                <SModalTitleSuccess>
+                  {"Sign In Success! Please back to the game"}
+                </SModalTitleSuccess>
+                {/*<STable>*/}
+                {/*  {Object.keys(result).map(key => (*/}
+                {/*    <SRow key={key}>*/}
+                {/*      <SKey>{key}</SKey>*/}
+                {/*      <SValue>{result[key].toString()}</SValue>*/}
+                {/*    </SRow>*/}
+                {/*  ))}*/}
+                {/*</STable>*/}
+              </SModalContainer>
+            ) : (
+              <SModalContainer>
+                <SModalTitleFailure>{result}</SModalTitleFailure>
+              </SModalContainer>
+            )
           ) : (
             <SModalContainer>
               <SModalTitle>{"Call Request Rejected"}</SModalTitle>
