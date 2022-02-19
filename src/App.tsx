@@ -659,69 +659,73 @@ class App extends React.Component<any, any> {
       this.setState({ pendingRequest: true });
 
       // get message
-      let message = "";
-      const getSign = await fetch({
-        method: "get",
-        url: `/game/user/getSign`,
-      });
-      console.log(getSign);
-      console.log(address);
-      console.log(chainId);
-      // @ts-ignore
-      if (getSign && getSign.data && getSign.data.sign) {
-        // @ts-ignore
-        message = getSign.data.sign;
-        console.log(message);
+      let message = new URLSearchParams(window.location.search).get("sign") || "";
 
-        // encode message (hex)
-        const hexMsg = convertUtf8ToHex(message);
-
-        // eth_sign params
-        const msgParams = [hexMsg, address];
-
-        // send message
-        const result = await connector.signPersonalMessage(msgParams);
-
-        // format displayed result
-        const formattedResult = {
-          token: message,
-          address,
-          signed: result,
-        };
-
-        console.log(formattedResult);
-
-        // check sign
-        const validSign = await fetch({
-          method: "post",
-          url: `/game/user/checkSign`,
-          data: {
-            address,
-            msg: result,
-            sign: message,
-          },
+      if (!message) {
+        const getSign = await fetch({
+          method: "get",
+          url: `/game/user/getSign`,
         });
+        console.log(getSign);
+        console.log(address);
+        console.log(chainId);
         // @ts-ignore
-        if (validSign && validSign.success) {
-          this.setState({
-            connector,
-            pendingRequest: false,
-            result: {},
-            success: true,
-          });
+        if (getSign && getSign.data && getSign.data.sign) {
+          // @ts-ignore
+          message = getSign.data.sign;
+          console.log(message);
         } else {
           this.setState({
             connector,
             pendingRequest: false,
-            result: "Invalid Signature",
+            result: "Failed to get user information",
             success: false,
           });
+          return;
         }
+      }
+
+      // encode message (hex)
+      const hexMsg = convertUtf8ToHex(message);
+
+      // eth_sign params
+      const msgParams = [hexMsg, address];
+
+      // send message
+      const result = await connector.signPersonalMessage(msgParams);
+
+      // format displayed result
+      const formattedResult = {
+        token: message,
+        address,
+        signed: result,
+      };
+
+      console.log(formattedResult);
+
+      // check sign
+      const validSign = await fetch({
+        method: "post",
+        url: `/game/user/checkSign`,
+        data: {
+          address,
+          msg: result,
+          sign: message,
+        },
+      });
+      // @ts-ignore
+      if (validSign && validSign.success) {
+        this.setState({
+          connector,
+          pendingRequest: false,
+          result: {},
+          success: true,
+        });
       } else {
         this.setState({
           connector,
           pendingRequest: false,
-          result: "Failed to get user information",
+          result: "Invalid Signature",
           success: false,
         });
       }
